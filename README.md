@@ -29,16 +29,18 @@ Enter these three values in Render when prompted by the Blueprint:
 | `SMTP_USER` | The SMTP login shown in Brevo under SMTP/API settings. This is not necessarily your Brevo account email. |
 | `SMTP_PASS` | A Brevo SMTP key. Create/copy an SMTP key; do not use a Brevo API key here. |
 | `EMAIL_FROM` | A sender address verified in Brevo, for example `Cypher-School <no-reply@yourdomain.com>`. Replace the example domain with your verified sender. |
+| `ADMIN_BOOTSTRAP_KEY` | A random secret of at least 32 characters. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Use it once to create the first admin, then remove it from Render. |
 
 `APP_BASE_URL` is optional. If set, use the exact public URL, such as `https://cypher-school.onrender.com`, with no trailing slash. When omitted, the server uses Render's assigned service URL. Render supplies `PORT` automatically; do not add it yourself. Do not set a second `DATABASE_URL` manually when using the Blueprint, because it is linked to the database service.
 
 The web service is on Render's free plan in this Blueprint, so the SMTP port is set to Brevo's port `2525`. Use the host and port above for that plan.
 
-Before the first successful deploy, set `SMTP_USER`, `SMTP_PASS`, and `EMAIL_FROM` on the web service. Registration verification and password recovery emails need these values. Then deploy. After the first successful deploy:
+Before the first successful deploy, set `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`, and `ADMIN_BOOTSTRAP_KEY` on the web service. Registration verification and password recovery emails need the SMTP values. Then deploy. To create the first admin on the free web plan, send a `POST` request to `https://your-service.onrender.com/api/admin/bootstrap`, set the `x-admin-bootstrap-key` header to your generated secret and the `Origin` header to the same service URL, and send JSON with `fullName`, `username`, `email`, and `password` (10–128 characters). The route is one-time and becomes unavailable once an administrator exists. Remove `ADMIN_BOOTSTRAP_KEY` from Render immediately after it succeeds. If using a paid service with Shell access instead, you can run `npm run admin:create`.
 
-1. Open the `cypher-school` service in Render and use its Shell.
-2. Run `npm run admin:create` and follow the prompts. Do not add a public admin signup route.
-3. Visit the service URL, sign in, then use **Admin panel** to manage users and resources.
+After the first successful deploy:
+
+1. Visit the service URL and sign in to the admin account you bootstrapped.
+2. Use **Admin panel** to manage users and resources.
 
 The Blueprint binds the web service to `0.0.0.0` through `PORT`, uses `/api/health` as its health check, and keeps PostgreSQL private to the service.
 

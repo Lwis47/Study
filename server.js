@@ -127,6 +127,45 @@ app.get("/api/health", async (req, res, next) => {
   catch (error) { next(error); }
 });
 
+app.post("/api/admin/bootstrap", authLimiter, sameOrigin, async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(781230441)");
+    const configuredKey = process.env.ADMIN_BOOTSTRAP_KEY || "";
+    const suppliedKey = req.get("x-admin-bootstrap-key") || "";
+    const adminCount = await client.query("SELECT COUNT(*)::int AS count FROM users WHERE role='admin'");
+    if (!configuredKey || configuredKey.length < 32 || adminCount.rows[0].count > 0) {
+      await client.query("ROLLBACK");
+      return res.status(410).json({ error: "Initial administrator setup is unavailable." });
+    }
+    const expected = Buffer.from(configuredKey);
+    const supplied = Buffer.from(suppliedKey);
+    if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) {
+      await client.query("ROLLBACK");
+      return res.status(403).json({ error: "Invalid setup key." });
+    }
+    const fullName = text(req.body.fullName, 120);
+    const username = text(req.body.username, 30);
+    const normalizedEmail = email(req.body.email);
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+    if (fullName.length < 2 || !usernamePattern.test(username) || !emailPattern.test(normalizedEmail) || password.length < 10 || password.length > 128) {
+      throw httpError(400, "Provide a valid name, username, email, and password (10–128 characters).");
+    }
+    const passwordHash = await bcrypt.hash(password, 12);
+    const result = await client.query(
+      "INSERT INTO users (full_name,username,email,password_hash,role,status,email_verified_at) VALUES ($1,$2,$3,$4,'admin','active',NOW()) RETURNING *",
+      [fullName, username, normalizedEmail, passwordHash],
+    );
+    await client.query("COMMIT");
+    res.status(201).json({ message: "Initial administrator created. Remove ADMIN_BOOTSTRAP_KEY from Render now.", user: publicUser(result.rows[0]) });
+  } catch (error) {
+    try { await client.query("ROLLBACK"); } catch { /* Ignore rollback after a completed transaction. */ }
+    if (error.code === "23505") return res.status(409).json({ error: "That email or username is already registered." });
+    next(error);
+  } finally { client.release(); }
+});
+
 app.post("/api/auth/register", authLimiter, sameOrigin, async (req, res, next) => {
   try {
     const fullName = text(req.body.fullName, 120);
