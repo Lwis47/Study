@@ -1,0 +1,53 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log in | Cypher-School</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="nav-wrap">
+        <a class="brand" href="index.html">CYPHER-SCHOOL // HUB</a>
+        <nav aria-label="Main navigation">
+          <a href="index.html">Home</a>
+          <a href="about.html">About</a>
+          <a href="developer.html">Team</a>
+          <a class="active" href="login.html">Log in</a>
+        </nav>
+      </div>
+    </header>
+    <main class="form-page">
+      <section class="form-container">
+        <p class="eyebrow">Welcome back</p>
+        <h1>Log in</h1>
+        <p>Sign in to continue learning and manage your account.</p>
+        <form id="login-form">
+          <label for="login">Email or username</label>
+          <input id="login" name="login" type="text" autocomplete="username"
+            placeholder="Enter your email or username" required>
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password"
+            autocomplete="current-password" placeholder="Enter your password" required>
+          <div class="remember-me">
+            <input id="remember-me" name="remember-me" type="checkbox">
+            <label for="remember-me">Remember me</label>
+          </div>
+          <button type="submit">Log in</button>
+        </form>
+        <p data-feedback class="notice form-message" role="status" hidden></p>
+        <p class="form-footer">
+          New to Cypher-School? <a href="signup.html">Create an account</a>
+        </p>
+      </section>
+    </main>
+    <footer>
+      By lwis Wanyonyi (CYPHER) © 2026 Cypher-School · Learn ethically.
+      Build responsibly
+    </footer>
+          <script src="app.js"></script>
+  </body>
+</html>
+
+

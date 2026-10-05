@@ -1,0 +1,64 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit a Resource | Cypher-School</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="nav-wrap">
+        <a class="brand" href="dashboard.html">CYPHER-SCHOOL // LEARN</a>
+        <nav aria-label="Learner navigation">
+          <a href="dashboard.html">Dashboard</a>
+          <a href="courses.html">Courses</a>
+          <a href="library.html">Library</a>
+        </nav>
+      </div>
+    </header>
+    <main class="form-page">
+      <section class="form-container">
+        <p class="eyebrow">Community contribution</p>
+        <h1>Submit a resource</h1>
+        <p>
+          Every submission is private until a Cypher-School administrator reviews and
+          approves it. Only submit material you have permission to share.
+        </p>
+        <form id="resource-submission">
+          <label for="resource-title">Resource title</label>
+          <input id="resource-title" name="resource-title" type="text"
+            placeholder="Give the material a clear title" required>
+          <label for="resource-category">Learning category</label>
+          <select id="resource-category" name="resource-category" required>
+            <option value="">Choose a category</option>
+            <option>Linux &amp; Networking</option>
+            <option>Python &amp; Programming</option>
+            <option>Web Development</option>
+            <option>Databases &amp; SQL</option>
+            <option>Cybersecurity</option>
+            <option>Operating Systems</option>
+          </select>
+          <label for="resource-file">PDF document</label>
+          <input id="resource-file" name="resource-file" type="file"
+            accept="application/pdf" required>
+          <label for="resource-note">Short description</label>
+          <input id="resource-note" name="resource-note" type="text"
+            placeholder="What will learners gain from this resource?" required>
+          <button type="submit">Send for admin review</button>
+        </form>
+        <div id="submission-message" class="notice form-message" role="status" hidden>
+          <strong>SUBMITTED</strong>
+          <span>Your resource is waiting for administrator review.</span>
+        </div>
+      </section>
+    </main>
+    <footer>
+      By lwis Wanyonyi (CYPHER) © 2026 Cypher-School · Learn ethically.
+      Build responsibly
+    </footer>
+          <script src="app.js"></script>
+  </body>
+</html>
+
+

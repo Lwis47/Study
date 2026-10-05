@@ -1,0 +1,58 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join Cypher-School | Cypher-School</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="nav-wrap">
+        <a class="brand" href="index.html">CYPHER-SCHOOL // HUB</a>
+        <nav aria-label="Main navigation">
+          <a href="index.html">Home</a>
+          <a href="about.html">About</a>
+          <a href="developer.html">Team</a>
+          <a href="login.html">Log in</a>
+        </nav>
+      </div>
+    </header>
+    <main class="form-page">
+      <section class="form-container">
+        <p class="eyebrow">Begin your journey</p>
+        <h1>Join Cypher-School</h1>
+        <p>Create an account to save your learning progress.</p>
+        <form id="signup-form">
+          <label for="fullname">Full name</label>
+          <input id="fullname" name="fullname" type="text" autocomplete="name"
+            placeholder="Enter your full name" required>
+          <label for="email">Email address</label>
+          <input id="email" name="email" type="email" autocomplete="email"
+            placeholder="Enter your email" required>
+          <label for="username">Username</label>
+          <input id="username" name="username" type="text"
+            autocomplete="username" placeholder="Choose a username" required>
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" minlength="10"
+            autocomplete="new-password" placeholder="Create a strong password (10+ characters)" required>
+          <label for="confirm-password">Confirm password</label>
+          <input id="confirm-password" name="confirm-password" type="password" minlength="10"
+            autocomplete="new-password" placeholder="Re-enter your password" required>
+          <button type="submit">Create account</button>
+        </form>
+        <p data-feedback class="notice form-message" role="status" hidden></p>
+        <p class="form-footer">
+          Already a learner? <a href="login.html">Log in</a>
+        </p>
+      </section>
+    </main>
+    <footer>
+      By lwis Wanyonyi (CYPHER) © 2026 Cypher-School · Learn ethically.
+      Build responsibly
+    </footer>
+          <script src="app.js"></script>
+  </body>
+</html>
+
+

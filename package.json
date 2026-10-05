@@ -1,0 +1,22 @@
+{
+  "name": "cypher-school",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cypher-School learning platform backend and frontend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "admin:create": "node scripts/create-admin.js",
+    "check": "node --check server.js && node --check db.js && node --check app.js"
+  },
+  "engines": { "node": ">=22.0.0 <25.0.0" },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "connect-pg-simple": "^10.0.0",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^8.1.0",
+    "multer": "^2.0.2",
+    "pg": "^8.16.3"
+  }
+}

@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: cypher-school
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cypher-school-db
+          property: connectionString
+      - key: DATABASE_SSL
+        value: "false"
+
+databases:
+  - name: cypher-school-db
+    databaseName: cypher_school
+    user: cypher_school
+    plan: 0.1c-256mb
+    region: oregon
+    ipAllowList: []

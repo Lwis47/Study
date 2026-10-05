@@ -1,0 +1,85 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+      content="Linux course knowledge check at Cypher-School.">
+    <title>Linux Knowledge Check | Cypher-School</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="nav-wrap">
+        <a class="brand" href="dashboard.html">CYPHER-SCHOOL // LEARN</a>
+        <nav aria-label="Learner navigation">
+          <a href="dashboard.html">Dashboard</a>
+          <a class="active" href="courses.html">Courses</a>
+          <a href="linux.html">Linux OS</a>
+        </nav>
+      </div>
+    </header>
+    <main class="container">
+      <section class="page-hero">
+        <p class="eyebrow">Linux &amp; Networking · Knowledge check</p>
+        <h1>Check your <span>understanding.</span></h1>
+        <p>Answer all three questions, then submit to see your result.</p>
+      </section>
+      <section class="lesson-content" style="margin-bottom: 72px">
+        <form id="linux-quiz">
+          <fieldset class="quiz-question">
+            <legend>1. Which statement best describes Linux?</legend>
+            <div class="quiz-options">
+              <label><input type="radio" name="q1" value="0"> A web browser</label>
+              <label><input type="radio" name="q1" value="1">
+                An open-source operating system family
+              </label>
+              <label><input type="radio" name="q1" value="0">
+                A type of computer virus
+              </label>
+            </div>
+          </fieldset>
+          <fieldset class="quiz-question">
+            <legend>2. What is the safest way to try Linux for the first time?</legend>
+            <div class="quiz-options">
+              <label><input type="radio" name="q2" value="1">
+                Use a virtual machine
+              </label>
+              <label><input type="radio" name="q2" value="0">
+                Delete the main operating system
+              </label>
+              <label><input type="radio" name="q2" value="0">
+                Install an ISO from an unknown source
+              </label>
+            </div>
+          </fieldset>
+          <fieldset class="quiz-question">
+            <legend>3. Why is Linux useful in cybersecurity learning?</legend>
+            <div class="quiz-options">
+              <label><input type="radio" name="q3" value="1">
+                It is configurable and widely used
+              </label>
+              <label><input type="radio" name="q3" value="0">
+                It removes the need for authorization
+              </label>
+              <label><input type="radio" name="q3" value="0">
+                It makes every system automatically secure
+              </label>
+            </div>
+          </fieldset>
+          <button type="submit">Submit answers</button>
+        </form>
+        <div id="quiz-result" class="notice"
+          style="display: none; margin-top: 24px"></div>
+        <div class="actions">
+          <a class="button secondary" href="linux-introduction.html">Review lesson</a>
+        </div>
+      </section>
+    </main>
+    <footer>
+      By lwis Wanyonyi (CYPHER) © 2026 Cypher-School · Learn ethically.
+      Build responsibly
+    </footer>
+          <script src="app.js"></script>
+  </body>
+</html>
