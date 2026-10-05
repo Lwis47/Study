@@ -14,7 +14,7 @@ async function api(url, options = {}) {
   const response = await fetch(url, { ...options, body, headers, credentials: "same-origin" });
   if (response.status === 204) return null;
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || `Request failed (${response.status}).`);
+  if (!response.ok) { const error = new Error(result.error || `Request failed (${response.status}).`); error.verificationRequired = result.verificationRequired === true; throw error; }
   return result;
 }
 
@@ -97,8 +97,11 @@ function setupAuthForms() {
       const result = await api("/api/auth/register", { method: "POST", body: {
         fullName: data.get("fullname"), email: data.get("email"), username: data.get("username"), password,
       } });
-      signedInUser = result.user;
-      location.href = "/dashboard.html";
+      showFeedback(feedback, result.emailSent
+        ? "Account created. Check your inbox for the verification link before logging in."
+        : "Account created, but the verification email could not be sent. Check email settings and use the resend link on the verification page.");
+      signup.reset();
+      setBusy(signup, false);
     } catch (error) { showFeedback(feedback, error.message, true); setBusy(signup, false); }
   });
 
@@ -112,7 +115,43 @@ function setupAuthForms() {
       const result = await api("/api/auth/login", { method: "POST", body: { identity: data.get("login"), password: data.get("password") } });
       signedInUser = result.user;
       location.href = "/dashboard.html";
-    } catch (error) { showFeedback(feedback, error.message, true); setBusy(login, false); }
+    } catch (error) {
+      showFeedback(feedback, error.message, true);
+      if (error.verificationRequired) feedback.innerHTML = `${escapeHtml(error.message)} <a href="/verify-email.html">Resend verification email</a>`;
+      setBusy(login, false);
+    }
+  });
+  setupEmailActions();
+}
+
+function setupEmailActions() {
+  const verifyMessage = document.querySelector("[data-verify-message]");
+  const token = new URLSearchParams(location.search).get("token");
+  if (verifyMessage && token) {
+    api("/api/auth/verify-email", { method: "POST", body: { token } })
+      .then((result) => showFeedback(verifyMessage, result.message))
+      .catch((error) => showFeedback(verifyMessage, error.message, true));
+    history.replaceState(null, "", location.pathname);
+  }
+  const resend = document.querySelector("#resend-verification-form");
+  resend?.addEventListener("submit", async (event) => {
+    event.preventDefault(); const feedback = resend.querySelector("[data-feedback]"); setBusy(resend, true);
+    try { const data = new FormData(resend); const result = await api("/api/auth/verification/resend", { method: "POST", body: { email: data.get("email") } }); showFeedback(feedback, result.message); }
+    catch (error) { showFeedback(feedback, error.message, true); } finally { setBusy(resend, false); }
+  });
+  const recovery = document.querySelector("#recovery-form");
+  recovery?.addEventListener("submit", async (event) => {
+    event.preventDefault(); const feedback = recovery.querySelector("[data-feedback]"); setBusy(recovery, true);
+    try { const data = new FormData(recovery); const result = await api("/api/auth/password-recovery", { method: "POST", body: { email: data.get("email") } }); showFeedback(feedback, result.message); recovery.reset(); }
+    catch (error) { showFeedback(feedback, error.message, true); } finally { setBusy(recovery, false); }
+  });
+  const reset = document.querySelector("#reset-password-form");
+  reset?.addEventListener("submit", async (event) => {
+    event.preventDefault(); const feedback = reset.querySelector("[data-feedback]"); const data = new FormData(reset);
+    if (data.get("password") !== data.get("confirm-password")) return showFeedback(feedback, "Passwords do not match.", true);
+    setBusy(reset, true);
+    try { const result = await api("/api/auth/password-recovery/complete", { method: "POST", body: { token: new URLSearchParams(location.search).get("token"), password: data.get("password") } }); showFeedback(feedback, result.message); reset.reset(); }
+    catch (error) { showFeedback(feedback, error.message, true); } finally { setBusy(reset, false); }
   });
 }
 
@@ -136,6 +175,11 @@ async function setupAccount() {
       const result = await api("/api/account", { method: "PATCH", body: {
         fullName: data.get("fullname"), username: data.get("username"), email: data.get("email"), bio: data.get("bio"),
       } });
+      if (result.requiresVerification) {
+        showFeedback(feedback, result.emailSent ? result.message : `${result.message} The verification email could not be sent; resend it from the verification page.`);
+        setTimeout(() => { location.href = "/verify-email.html"; }, 1800);
+        return;
+      }
       signedInUser = result.user;
       renderNavigation();
       showFeedback(feedback, "Account details saved.");
@@ -170,7 +214,7 @@ function setupAdminPanel() {
   let query = "";
   const draw = () => {
     const list = allUsers.filter((user) => `${user.fullName} ${user.username} ${user.email} ${user.role} ${user.status}`.toLowerCase().includes(query.toLowerCase()));
-    root.innerHTML = `<div class="admin-summary"><article class="dashboard-stat"><span>${allUsers.length}</span><p>Total accounts</p></article><article class="dashboard-stat"><span>${allUsers.filter((user) => user.status === "active").length}</span><p>Active</p></article><article class="dashboard-stat"><span>${allUsers.filter((user) => user.role === "admin").length}</span><p>Administrators</p></article></div><section class="content-panel"><div class="admin-heading"><div><p class="eyebrow">Full account control</p><h2>User management</h2></div><button type="button" data-export>Export user list</button></div><label for="user-search">Search accounts</label><input id="user-search" type="search" placeholder="Name, username, email, status…" value="${escapeHtml(query)}"><div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead><tbody>${list.map((user) => `<tr><td><strong>${escapeHtml(user.fullName)}</strong><small>@${escapeHtml(user.username)} · ${escapeHtml(user.email)}</small></td><td><select data-role="${user.id}" aria-label="Role for ${escapeHtml(user.username)}"><option value="user" ${user.role === "user" ? "selected" : ""}>User</option><option value="admin" ${user.role === "admin" ? "selected" : ""}>Admin</option></select></td><td><span class="status-pill ${user.status}">${escapeHtml(user.status)}</span></td><td>${new Date(user.createdAt).toLocaleDateString()}</td><td class="admin-actions"><button type="button" data-status="${user.id}" data-current="${user.status}">${user.status === "active" ? "Suspend" : "Restore"}</button><button type="button" data-edit="${user.id}">Edit details</button><button type="button" data-reset="${user.id}">Set password</button><button class="danger-button" type="button" data-delete="${user.id}" ${user.id === signedInUser?.id ? "disabled" : ""}>Delete</button></td></tr>`).join("") || '<tr><td colspan="5">No accounts found.</td></tr>'}</tbody></table></div><p class="upload-note">Changes are enforced by the server. You cannot remove your own active administrator access or delete the last active administrator.</p></section>`;
+    root.innerHTML = `<div class="admin-summary"><article class="dashboard-stat"><span>${allUsers.length}</span><p>Total accounts</p></article><article class="dashboard-stat"><span>${allUsers.filter((user) => user.status === "active").length}</span><p>Active</p></article><article class="dashboard-stat"><span>${allUsers.filter((user) => user.role === "admin").length}</span><p>Administrators</p></article></div><section class="content-panel"><div class="admin-heading"><div><p class="eyebrow">Full account control</p><h2>User management</h2></div><button type="button" data-export>Export user list</button></div><label for="user-search">Search accounts</label><input id="user-search" type="search" placeholder="Name, username, email, status…" value="${escapeHtml(query)}"><div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead><tbody>${list.map((user) => `<tr><td><strong>${escapeHtml(user.fullName)}</strong><small>@${escapeHtml(user.username)} · ${escapeHtml(user.email)} · ${user.emailVerified ? "email verified" : "email unverified"}</small></td><td><select data-role="${user.id}" aria-label="Role for ${escapeHtml(user.username)}"><option value="user" ${user.role === "user" ? "selected" : ""}>User</option><option value="admin" ${user.role === "admin" ? "selected" : ""}>Admin</option></select></td><td><span class="status-pill ${user.status}">${escapeHtml(user.status)}</span></td><td>${new Date(user.createdAt).toLocaleDateString()}</td><td class="admin-actions"><button type="button" data-status="${user.id}" data-current="${user.status}">${user.status === "active" ? "Suspend" : "Restore"}</button><button type="button" data-edit="${user.id}">Edit details</button><button type="button" data-reset="${user.id}">Send reset email</button><button class="danger-button" type="button" data-delete="${user.id}" ${user.id === signedInUser?.id ? "disabled" : ""}>Delete</button></td></tr>`).join("") || '<tr><td colspan="5">No accounts found.</td></tr>'}</tbody></table></div><p class="upload-note">Changes are enforced by the server. You cannot remove your own active administrator access or delete the last active administrator.</p></section>`;
     root.querySelector("#user-search").addEventListener("input", (event) => { query = event.target.value; draw(); });
     root.querySelector("[data-export]").addEventListener("click", () => {
       const blob = new Blob([JSON.stringify(allUsers, null, 2)], { type: "application/json" });
@@ -186,9 +230,7 @@ function setupAdminPanel() {
       await mutateUser(user.id, { fullName, username, email: userEmail });
     }));
     root.querySelectorAll("[data-reset]").forEach((button) => button.addEventListener("click", async () => {
-      const password = prompt("Set a temporary password (10+ characters):");
-      if (!password) return;
-      try { await api(`/api/admin/users/${button.dataset.reset}/password`, { method: "PATCH", body: { password } }); alert("Password updated."); }
+      try { await api(`/api/admin/users/${button.dataset.reset}/password-reset`, { method: "POST" }); alert("Password reset email sent if the account has a verified email address."); }
       catch (error) { alert(error.message); }
     }));
     root.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", async () => {

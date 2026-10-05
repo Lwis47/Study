@@ -18,6 +18,18 @@ services:
           property: connectionString
       - key: DATABASE_SSL
         value: "false"
+      - key: SMTP_HOST
+        value: smtp-relay.brevo.com
+      - key: SMTP_PORT
+        value: "2525"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
 
 databases:
   - name: cypher-school-db

@@ -42,7 +42,7 @@ async function main() {
   }
   const hash = await bcrypt.hash(password, 12);
   const result = await pool.query(
-    "INSERT INTO users (full_name,username,email,password_hash,role,status) VALUES ($1,$2,$3,$4,'admin','active') RETURNING id",
+    "INSERT INTO users (full_name,username,email,password_hash,role,status,email_verified_at) VALUES ($1,$2,$3,$4,'admin','active',NOW()) RETURNING id",
     [fullName, username, email, hash],
   );
   console.log(`Administrator created (${result.rows[0].id}). Sign in with ${username}.`);

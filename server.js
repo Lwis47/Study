@@ -1,4 +1,5 @@
 const path = require("node:path");
+const crypto = require("node:crypto");
 const express = require("express");
 const helmet = require("helmet");
 const session = require("express-session");
@@ -7,6 +8,7 @@ const bcrypt = require("bcryptjs");
 const multer = require("multer");
 const { rateLimit } = require("express-rate-limit");
 const { pool, initDatabase } = require("./db");
+const { sendVerificationEmail, sendPasswordResetEmail, sendPasswordChangedEmail } = require("./mailer");
 
 const app = express();
 const PORT = Number(process.env.PORT || 10000);
@@ -55,16 +57,36 @@ app.use(session({
 
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 240, standardHeaders: "draft-8", legacyHeaders: false });
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many attempts. Try again in a few minutes." } });
+const emailActionLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many email requests. Try again later." } });
 app.use("/api", apiLimiter);
 
 function httpError(status, message) { const error = new Error(message); error.status = status; return error; }
 function text(value, max) { return typeof value === "string" ? value.trim().slice(0, max) : ""; }
 function email(value) { return text(value, 254).toLowerCase(); }
+function newToken() { const raw = crypto.randomBytes(32).toString("hex"); return { raw, hash: crypto.createHash("sha256").update(raw).digest("hex") }; }
+async function revokeSessions(userId, exceptSessionId) {
+  if (exceptSessionId) {
+    await pool.query("DELETE FROM user_sessions WHERE sess->>'userId' = $1 AND sid <> $2", [userId, exceptSessionId]);
+  } else {
+    await pool.query("DELETE FROM user_sessions WHERE sess->>'userId' = $1", [userId]);
+  }
+}
+async function issueVerification(user) {
+  const token = newToken();
+  await pool.query("UPDATE users SET email_verification_token_hash=$1, email_verification_expires_at=NOW()+INTERVAL '24 hours' WHERE id=$2", [token.hash, user.id]);
+  await sendVerificationEmail(user, token.raw);
+}
+async function issuePasswordReset(user) {
+  const token = newToken();
+  await pool.query("UPDATE users SET password_reset_token_hash=$1, password_reset_expires_at=NOW()+INTERVAL '30 minutes' WHERE id=$2", [token.hash, user.id]);
+  await sendPasswordResetEmail(user, token.raw);
+}
 function publicUser(row) {
   return {
     id: row.id, fullName: row.full_name, username: row.username, email: row.email,
     role: row.role, status: row.status, bio: row.bio,
-    progress: row.progress || {}, createdAt: row.created_at, lastLoginAt: row.last_login_at,
+    progress: row.progress || {}, emailVerified: Boolean(row.email_verified_at),
+    createdAt: row.created_at, lastLoginAt: row.last_login_at,
   };
 }
 function sameOrigin(req, res, next) {
@@ -85,6 +107,10 @@ async function requireAuth(req, res, next) {
     if (!user || user.status !== "active") {
       req.session.destroy(() => {});
       return res.status(401).json({ error: "This account is unavailable. Please contact an administrator." });
+    }
+    if (!user.email_verified_at) {
+      req.session.destroy(() => {});
+      return res.status(403).json({ error: "Verify your email address before continuing.", verificationRequired: true });
     }
     req.user = user;
     next();
@@ -112,13 +138,15 @@ app.post("/api/auth/register", authLimiter, sameOrigin, async (req, res, next) =
     if (!emailPattern.test(normalizedEmail)) throw httpError(400, "Enter a valid email address.");
     if (password.length < 10 || password.length > 128) throw httpError(400, "Password must be between 10 and 128 characters.");
     const passwordHash = await bcrypt.hash(password, 12);
+    const token = newToken();
     const result = await pool.query(
-      "INSERT INTO users (full_name, username, email, password_hash) VALUES ($1, $2, $3, $4) RETURNING *",
-      [fullName, username, normalizedEmail, passwordHash],
+      "INSERT INTO users (full_name, username, email, password_hash, email_verification_token_hash, email_verification_expires_at) VALUES ($1,$2,$3,$4,$5,NOW()+INTERVAL '24 hours') RETURNING *",
+      [fullName, username, normalizedEmail, passwordHash, token.hash],
     );
-    await new Promise((resolve, reject) => req.session.regenerate((error) => error ? reject(error) : resolve()));
-    req.session.userId = result.rows[0].id;
-    res.status(201).json({ user: publicUser(result.rows[0]) });
+    let emailSent = true;
+    try { await sendVerificationEmail(result.rows[0], token.raw); }
+    catch (mailError) { emailSent = false; console.error("Registration email delivery failed", mailError.code || "SMTP_ERROR"); }
+    res.status(201).json({ requiresVerification: true, emailSent, message: "Account created. Check your email to verify your address." });
   } catch (error) {
     if (error.code === "23505") return res.status(409).json({ error: "That email or username is already registered." });
     next(error);
@@ -133,11 +161,73 @@ app.post("/api/auth/login", authLimiter, sameOrigin, async (req, res, next) => {
     const user = result.rows[0];
     if (!user || !(await bcrypt.compare(password, user.password_hash))) return res.status(401).json({ error: "The username/email or password is incorrect." });
     if (user.status !== "active") return res.status(403).json({ error: "This account is suspended. Contact an administrator." });
+    if (!user.email_verified_at) return res.status(403).json({ error: "Verify your email address before signing in.", verificationRequired: true });
     await new Promise((resolve, reject) => req.session.regenerate((error) => error ? reject(error) : resolve()));
     req.session.userId = user.id;
     await pool.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [user.id]);
     res.json({ user: publicUser({ ...user, last_login_at: new Date() }) });
   } catch (error) { next(error); }
+});
+
+app.post("/api/auth/verify-email", emailActionLimiter, sameOrigin, async (req, res, next) => {
+  try {
+    const raw = typeof req.body.token === "string" ? req.body.token : "";
+    if (!/^[a-f0-9]{64}$/i.test(raw)) throw httpError(400, "This verification link is invalid or expired.");
+    const tokenHash = crypto.createHash("sha256").update(raw).digest("hex");
+    const result = await pool.query(
+      "UPDATE users SET email_verified_at=NOW(), email_verification_token_hash=NULL, email_verification_expires_at=NULL WHERE email_verification_token_hash=$1 AND email_verification_expires_at > NOW() RETURNING id",
+      [tokenHash],
+    );
+    if (!result.rowCount) throw httpError(400, "This verification link is invalid or expired. Request a new one.");
+    res.json({ message: "Email verified. You can now sign in." });
+  } catch (error) { next(error); }
+});
+
+app.post("/api/auth/verification/resend", emailActionLimiter, sameOrigin, async (req, res) => {
+  const normalizedEmail = email(req.body.email);
+  const result = await pool.query("SELECT * FROM users WHERE email=$1 AND email_verified_at IS NULL AND status='active'", [normalizedEmail]);
+  if (result.rowCount) {
+    try { await issueVerification(result.rows[0]); }
+    catch (error) { console.error("Verification resend failed", error.code || "SMTP_ERROR"); }
+  }
+  res.json({ message: "If an unverified account exists for that email, a verification link has been sent." });
+});
+
+app.post("/api/auth/password-recovery", emailActionLimiter, sameOrigin, async (req, res) => {
+  const normalizedEmail = email(req.body.email);
+  const result = await pool.query("SELECT * FROM users WHERE email=$1 AND email_verified_at IS NOT NULL AND status='active'", [normalizedEmail]);
+  if (result.rowCount) {
+    try { await issuePasswordReset(result.rows[0]); }
+    catch (error) { console.error("Password recovery email delivery failed", error.code || "SMTP_ERROR"); }
+  }
+  res.json({ message: "If a verified account exists for that email, password recovery instructions have been sent." });
+});
+
+app.post("/api/auth/password-recovery/complete", emailActionLimiter, sameOrigin, async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const raw = typeof req.body.token === "string" ? req.body.token : "";
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+    if (!/^[a-f0-9]{64}$/i.test(raw)) throw httpError(400, "This reset link is invalid or expired.");
+    if (password.length < 10 || password.length > 128) throw httpError(400, "Password must be between 10 and 128 characters.");
+    const tokenHash = crypto.createHash("sha256").update(raw).digest("hex");
+    const passwordHash = await bcrypt.hash(password, 12);
+    await client.query("BEGIN");
+    const result = await client.query(
+      "UPDATE users SET password_hash=$1, password_reset_token_hash=NULL, password_reset_expires_at=NULL WHERE password_reset_token_hash=$2 AND password_reset_expires_at > NOW() AND email_verified_at IS NOT NULL RETURNING id,full_name,email",
+      [passwordHash, tokenHash],
+    );
+    if (!result.rowCount) { await client.query("ROLLBACK"); throw httpError(400, "This reset link is invalid or expired. Request a new one."); }
+    const user = result.rows[0];
+    await client.query("DELETE FROM user_sessions WHERE sess->>'userId'=$1", [user.id]);
+    await client.query("COMMIT");
+    try { await sendPasswordChangedEmail({ fullName: user.full_name, email: user.email }); }
+    catch (mailError) { console.error("Password change notification failed", mailError.code || "SMTP_ERROR"); }
+    res.json({ message: "Password reset. You can now sign in." });
+  } catch (error) {
+    try { await client.query("ROLLBACK"); } catch { /* Ignore rollback after a completed transaction. */ }
+    next(error);
+  } finally { client.release(); }
 });
 
 app.post("/api/auth/logout", sameOrigin, (req, res, next) => {
@@ -159,7 +249,23 @@ app.patch("/api/account", sameOrigin, requireAuth, async (req, res, next) => {
     if (fullName.length < 2) throw httpError(400, "Enter your full name.");
     if (!usernamePattern.test(username)) throw httpError(400, "Username must be 3–30 characters using letters, numbers, dots, dashes, or underscores.");
     if (!emailPattern.test(normalizedEmail)) throw httpError(400, "Enter a valid email address.");
-    const result = await pool.query("UPDATE users SET full_name = $1, username = $2, email = $3, bio = $4 WHERE id = $5 RETURNING *", [fullName, username, normalizedEmail, bio, req.user.id]);
+    const emailChanged = normalizedEmail !== req.user.email;
+    const token = emailChanged ? newToken() : null;
+    const result = await pool.query(
+      "UPDATE users SET full_name=$1, username=$2, email=$3, bio=$4, email_verified_at=CASE WHEN $5 THEN NULL ELSE email_verified_at END, email_verification_token_hash=CASE WHEN $5 THEN $6 ELSE email_verification_token_hash END, email_verification_expires_at=CASE WHEN $5 THEN NOW()+INTERVAL '24 hours' ELSE email_verification_expires_at END WHERE id=$7 RETURNING *",
+      [fullName, username, normalizedEmail, bio, emailChanged, token?.hash || null, req.user.id],
+    );
+    let emailSent = true;
+    if (emailChanged) {
+      try { await sendVerificationEmail(result.rows[0], token.raw); }
+      catch (mailError) { emailSent = false; console.error("Changed-address verification delivery failed", mailError.code || "SMTP_ERROR"); }
+      await revokeSessions(req.user.id, req.sessionID);
+      return req.session.destroy((sessionError) => {
+        if (sessionError) return next(sessionError);
+        res.clearCookie("cypher.sid", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/" });
+        res.json({ requiresVerification: true, emailSent, message: "Verify the new email address before signing in again." });
+      });
+    }
     res.json({ user: publicUser(result.rows[0]) });
   } catch (error) {
     if (error.code === "23505") return res.status(409).json({ error: "That email or username is already in use." });
@@ -174,6 +280,9 @@ app.patch("/api/account/password", sameOrigin, requireAuth, async (req, res, nex
     if (typeof currentPassword !== "string" || !(await bcrypt.compare(currentPassword, req.user.password_hash))) throw httpError(400, "Current password is incorrect.");
     const passwordHash = await bcrypt.hash(newPassword, 12);
     await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [passwordHash, req.user.id]);
+    await revokeSessions(req.user.id, req.sessionID);
+    try { await sendPasswordChangedEmail(req.user); }
+    catch (mailError) { console.error("Password change notification failed", mailError.code || "SMTP_ERROR"); }
     res.json({ message: "Password changed." });
   } catch (error) { next(error); }
 });
@@ -233,23 +342,30 @@ app.patch("/api/admin/users/:id", sameOrigin, ...requireActiveAdmin, async (req,
       const admins = await pool.query("SELECT COUNT(*)::int AS count FROM users WHERE role = 'admin' AND status = 'active'");
       if (admins.rows[0].count <= 1) throw httpError(409, "There must always be at least one active administrator.");
     }
-    const result = await pool.query("UPDATE users SET full_name=$1, username=$2, email=$3, role=$4, status=$5, bio=$6 WHERE id=$7 RETURNING *", [fullName, username, normalizedEmail, role, status, bio, id]);
-    res.json({ user: publicUser(result.rows[0]) });
+    if (target.id === req.user.id && normalizedEmail !== target.email) throw httpError(409, "Change your own email from account settings so it can be verified.");
+    const emailChanged = normalizedEmail !== target.email;
+    const token = emailChanged ? newToken() : null;
+    const result = await pool.query("UPDATE users SET full_name=$1, username=$2, email=$3, role=$4, status=$5, bio=$6, email_verified_at=CASE WHEN $7 THEN NULL ELSE email_verified_at END, email_verification_token_hash=CASE WHEN $7 THEN $8 ELSE email_verification_token_hash END, email_verification_expires_at=CASE WHEN $7 THEN NOW()+INTERVAL '24 hours' ELSE email_verification_expires_at END WHERE id=$9 RETURNING *", [fullName, username, normalizedEmail, role, status, bio, emailChanged, token?.hash || null, id]);
+    if (emailChanged || status !== target.status) await revokeSessions(id);
+    let emailSent = true;
+    if (emailChanged) {
+      try { await sendVerificationEmail(result.rows[0], token.raw); }
+      catch (mailError) { emailSent = false; console.error("Admin changed-address verification delivery failed", mailError.code || "SMTP_ERROR"); }
+    }
+    res.json({ user: publicUser(result.rows[0]), ...(emailChanged ? { requiresVerification: true, emailSent } : {}) });
   } catch (error) {
     if (error.code === "23505") return res.status(409).json({ error: "That email or username is already in use." });
     next(error);
   }
 });
 
-app.patch("/api/admin/users/:id/password", sameOrigin, ...requireActiveAdmin, async (req, res, next) => {
+app.post("/api/admin/users/:id/password-reset", sameOrigin, emailActionLimiter, ...requireActiveAdmin, async (req, res, next) => {
   try {
     if (!uuidPattern.test(req.params.id)) throw httpError(404, "User not found.");
-    const password = req.body.password;
-    if (typeof password !== "string" || password.length < 10 || password.length > 128) throw httpError(400, "Password must be between 10 and 128 characters.");
-    const passwordHash = await bcrypt.hash(password, 12);
-    const result = await pool.query("UPDATE users SET password_hash=$1 WHERE id=$2 RETURNING id", [passwordHash, req.params.id]);
+    const result = await pool.query("SELECT * FROM users WHERE id=$1 AND email_verified_at IS NOT NULL AND status='active'", [req.params.id]);
     if (!result.rowCount) throw httpError(404, "User not found.");
-    res.json({ message: "Password updated." });
+    await issuePasswordReset(result.rows[0]);
+    res.json({ message: "Password reset instructions sent." });
   } catch (error) { next(error); }
 });
 
@@ -332,7 +448,7 @@ app.get("/api/resources/:id/file", requireAuth, async (req, res, next) => {
 
 // Never expose server configuration, database files, package manifests, or the admin bootstrap script.
 app.use((req, res, next) => {
-  if (/\/(?:server\.js|db\.js|package(?:-lock)?\.json|render\.yaml|\.env.*|scripts\/.*|node_modules\/.*|README.*|\.git.*)$/i.test(req.path)) return res.sendStatus(404);
+  if (/\/(?:server\.js|db\.js|mailer\.js|package(?:-lock)?\.json|render\.yaml|\.env.*|scripts\/.*|node_modules\/.*|README.*|\.git.*)$/i.test(req.path)) return res.sendStatus(404);
   next();
 });
 app.use(express.static(__dirname, { dotfiles: "deny", index: "index.html", maxAge: process.env.NODE_ENV === "production" ? "1h" : 0 }));

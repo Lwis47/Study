@@ -23,9 +23,21 @@ async function initDatabase() {
       status VARCHAR(12) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
       bio VARCHAR(240) NOT NULL DEFAULT '',
       progress JSONB NOT NULL DEFAULT '{}'::jsonb,
+      email_verified_at TIMESTAMPTZ,
+      email_verification_token_hash TEXT,
+      email_verification_expires_at TIMESTAMPTZ,
+      password_reset_token_hash TEXT,
+      password_reset_expires_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_login_at TIMESTAMPTZ
     );
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_token_hash TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token_hash TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMPTZ;
+    UPDATE users SET email_verified_at = created_at
+      WHERE email_verified_at IS NULL AND email_verification_token_hash IS NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_unique ON users (LOWER(email));
     CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower_unique ON users (LOWER(username));
 
