@@ -430,6 +430,14 @@ function setupQuiz() {
 function personalizeDashboard() {
   const heading = document.querySelector("[data-welcome]");
   if (signedInUser && heading) heading.textContent = `Welcome, ${signedInUser.username}.`;
+  const homeActions = document.querySelector("[data-home-auth-actions]");
+  if (!homeActions) return;
+  homeActions.hidden = false;
+  if (signedInUser?.role === "admin") {
+    homeActions.innerHTML = '<a class="button" href="admin.html">Open admin panel</a><a class="button secondary" href="account.html">Manage account</a>';
+  } else if (signedInUser) {
+    homeActions.innerHTML = '<a class="button" href="dashboard.html">Open dashboard</a><a class="button secondary" href="courses.html">Choose a learning path</a>';
+  }
 }
 
 function setupOpsScreen() {
