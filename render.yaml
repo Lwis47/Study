@@ -37,6 +37,6 @@ databases:
   - name: cypher-school-db
     databaseName: cypher_school
     user: cypher_school
-    plan: 0.1c-256mb
+    plan: free
     region: oregon
     ipAllowList: []

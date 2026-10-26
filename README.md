@@ -16,7 +16,7 @@ The server creates/updates its tables on startup. Never commit `.env` or share a
 
 ## Deploy to Render
 
-The included `render.yaml` defines a Node web service and a PostgreSQL database. Connect the repository to Render and create a Blueprint from this file. Render generates `SESSION_SECRET` and injects the database connection string. The database is configured on a persistent paid plan; the free Render PostgreSQL plan expires after 30 days, so it is unsuitable for long-lived user data. The web service uses the free plan and can spin down when idle.
+The included `render.yaml` defines a free Node web service and a free PostgreSQL database. Connect the repository to Render and create a Blueprint from this file. Render generates `SESSION_SECRET` and injects the database connection string. The free database has a 1 GB storage limit and expires after 30 days; its data is temporary and it has no backups. Upgrade or migrate the database before expiration to keep user accounts and progress. The free web service can spin down when idle.
 
 ### Render environment variables
 
@@ -33,7 +33,7 @@ Enter these three values in Render when prompted by the Blueprint:
 
 `APP_BASE_URL` is optional. If set, use the exact public URL, such as `https://cypher-school.onrender.com`, with no trailing slash. When omitted, the server uses Render's assigned service URL. Render supplies `PORT` automatically; do not add it yourself. Do not set a second `DATABASE_URL` manually when using the Blueprint, because it is linked to the database service.
 
-The web service is on Render's free plan in this Blueprint, so the SMTP port is set to Brevo's port `2525`. Use the host and port above for that plan.
+The web service and database are on Render's free plans in this Blueprint. The SMTP port is set to Brevo's port `2525`; use the host and port above for this plan.
 
 Before the first successful deploy, set `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`, and `ADMIN_BOOTSTRAP_KEY` on the web service. Registration verification and password recovery emails need the SMTP values. Then deploy. To create the first admin on the free web plan, send a `POST` request to `https://your-service.onrender.com/api/admin/bootstrap`, set the `x-admin-bootstrap-key` header to your generated secret and the `Origin` header to the same service URL, and send JSON with `fullName`, `username`, `email`, and `password` (10–128 characters). The route is one-time and becomes unavailable once an administrator exists. Remove `ADMIN_BOOTSTRAP_KEY` from Render immediately after it succeeds. If using a paid service with Shell access instead, you can run `npm run admin:create`.
 
@@ -55,4 +55,4 @@ The Blueprint binds the web service to `0.0.0.0` through `PORT`, uses `/api/heal
 - PDF resource submissions stored in PostgreSQL until an administrator approves or rejects them.
 - `/api/health` readiness check.
 
-The free Render web tier sleeps when idle; this affects wake-up time but not database persistence. Do not use the free PostgreSQL plan for real learner accounts because it expires after 30 days.
+The free Render web tier sleeps when idle, so the first request after inactivity can take longer. The free PostgreSQL database expires after 30 days; migrate or upgrade it before then to retain accounts and learner progress.
