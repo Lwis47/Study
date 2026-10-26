@@ -28,6 +28,8 @@ async function initDatabase() {
       email_verification_expires_at TIMESTAMPTZ,
       password_reset_token_hash TEXT,
       password_reset_expires_at TIMESTAMPTZ,
+      profile_changed_at TIMESTAMPTZ,
+      password_changed_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_login_at TIMESTAMPTZ
     );
@@ -36,6 +38,8 @@ async function initDatabase() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token_hash TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_changed_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
     UPDATE users SET email_verified_at = created_at
       WHERE email_verified_at IS NULL AND email_verification_token_hash IS NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_unique ON users (LOWER(email));

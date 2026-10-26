@@ -17,7 +17,15 @@ const PgSession = connectPgSimple(session);
 const allowedCategories = new Set([
   "Linux & Networking", "Python & Programming", "Web Development",
   "Databases & SQL", "Cybersecurity", "Operating Systems",
+  "Cybersecurity Basics", "Web Security", "Python for Security",
+  "OSINT Fundamentals", "Security Practice",
 ]);
+const protectedPages = new Set([
+  "/dashboard.html", "/linux.html", "/linux-networking.html",
+  "/linux-introduction.html", "/quiz-linux.html", "/library.html",
+  "/submit-resource.html", "/account.html", "/admin.html", "/admin-review.html",
+]);
+const adminPages = new Set(["/admin.html", "/admin-review.html"]);
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const usernamePattern = /^[A-Za-z0-9_.-]{3,30}$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -289,11 +297,21 @@ app.patch("/api/account", sameOrigin, requireAuth, async (req, res, next) => {
     if (!usernamePattern.test(username)) throw httpError(400, "Username must be 3–30 characters using letters, numbers, dots, dashes, or underscores.");
     if (!emailPattern.test(normalizedEmail)) throw httpError(400, "Enter a valid email address.");
     const emailChanged = normalizedEmail !== req.user.email;
+    const profileChanged = fullName !== req.user.full_name
+      || username !== req.user.username
+      || emailChanged
+      || bio !== req.user.bio;
+    const enforceMonthlyProfileLimit = profileChanged && req.user.role !== "admin";
+    const lastProfileChange = req.user.profile_changed_at ? new Date(req.user.profile_changed_at).getTime() : 0;
+    if (enforceMonthlyProfileLimit && lastProfileChange && Date.now() < lastProfileChange + 30 * 24 * 60 * 60 * 1000) {
+      throw httpError(429, "You can change your profile details once every 30 days. Try again after the 30-day period ends.");
+    }
     const token = emailChanged ? newToken() : null;
     const result = await pool.query(
-      "UPDATE users SET full_name=$1, username=$2, email=$3, bio=$4, email_verified_at=CASE WHEN $5 THEN NULL ELSE email_verified_at END, email_verification_token_hash=CASE WHEN $5 THEN $6 ELSE email_verification_token_hash END, email_verification_expires_at=CASE WHEN $5 THEN NOW()+INTERVAL '24 hours' ELSE email_verification_expires_at END WHERE id=$7 RETURNING *",
-      [fullName, username, normalizedEmail, bio, emailChanged, token?.hash || null, req.user.id],
+      "UPDATE users SET full_name=$1, username=$2, email=$3, bio=$4, email_verified_at=CASE WHEN $5 THEN NULL ELSE email_verified_at END, email_verification_token_hash=CASE WHEN $5 THEN $6 ELSE email_verification_token_hash END, email_verification_expires_at=CASE WHEN $5 THEN NOW()+INTERVAL '24 hours' ELSE email_verification_expires_at END, profile_changed_at=CASE WHEN $7 THEN NOW() ELSE profile_changed_at END WHERE id=$8 AND (NOT $7 OR profile_changed_at IS NULL OR profile_changed_at <= NOW()-INTERVAL '30 days') RETURNING *",
+      [fullName, username, normalizedEmail, bio, emailChanged, token?.hash || null, enforceMonthlyProfileLimit, req.user.id],
     );
+    if (!result.rowCount) throw httpError(429, "You can change your profile details once every 30 days. Try again after the 30-day period ends.");
     let emailSent = true;
     if (emailChanged) {
       try { await sendVerificationEmail(result.rows[0], token.raw); }
@@ -317,8 +335,17 @@ app.patch("/api/account/password", sameOrigin, requireAuth, async (req, res, nex
     const { currentPassword, newPassword } = req.body;
     if (typeof newPassword !== "string" || newPassword.length < 10 || newPassword.length > 128) throw httpError(400, "New password must be between 10 and 128 characters.");
     if (typeof currentPassword !== "string" || !(await bcrypt.compare(currentPassword, req.user.password_hash))) throw httpError(400, "Current password is incorrect.");
+    const enforceMonthlyPasswordLimit = req.user.role !== "admin";
+    const lastPasswordChange = req.user.password_changed_at ? new Date(req.user.password_changed_at).getTime() : 0;
+    if (enforceMonthlyPasswordLimit && lastPasswordChange && Date.now() < lastPasswordChange + 30 * 24 * 60 * 60 * 1000) {
+      throw httpError(429, "You can change your password once every 30 days. Use password recovery if you cannot access your account.");
+    }
     const passwordHash = await bcrypt.hash(newPassword, 12);
-    await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [passwordHash, req.user.id]);
+    const updated = await pool.query(
+      "UPDATE users SET password_hash=$1, password_changed_at=CASE WHEN $3 THEN NOW() ELSE password_changed_at END WHERE id=$2 AND (NOT $3 OR password_changed_at IS NULL OR password_changed_at <= NOW()-INTERVAL '30 days') RETURNING id",
+      [passwordHash, req.user.id, enforceMonthlyPasswordLimit],
+    );
+    if (!updated.rowCount) throw httpError(429, "You can change your password once every 30 days. Use password recovery if you cannot access your account.");
     await revokeSessions(req.user.id, req.sessionID);
     try { await sendPasswordChangedEmail(req.user); }
     catch (mailError) { console.error("Password change notification failed", mailError.code || "SMTP_ERROR"); }
@@ -438,10 +465,16 @@ app.post("/api/resources", sameOrigin, requireAuth, upload.single("file"), async
     const description = text(req.body.description, 500);
     if (title.length < 3 || !allowedCategories.has(category) || description.length < 5) throw httpError(400, "Provide a title, valid category, and description.");
     if (!req.file || req.file.buffer.subarray(0, 5).toString("ascii") !== "%PDF-") throw httpError(415, "The uploaded file is not a valid PDF.");
-    const result = await pool.query(
-      "INSERT INTO resources (uploader_id,title,category,description,file_name,file_data) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,title,category,description,status,created_at",
-      [req.user.id, title, category, description, path.basename(req.file.originalname).slice(0, 255), req.file.buffer],
-    );
+    const resourceValues = [req.user.id, title, category, description, path.basename(req.file.originalname).slice(0, 255), req.file.buffer];
+    const result = req.user.role === "admin"
+      ? await pool.query(
+        "INSERT INTO resources (uploader_id,title,category,description,file_name,file_data,status,reviewer_id,reviewed_at) VALUES ($1,$2,$3,$4,$5,$6,'approved',$1,NOW()) RETURNING id,title,category,description,status,created_at",
+        resourceValues,
+      )
+      : await pool.query(
+        "INSERT INTO resources (uploader_id,title,category,description,file_name,file_data) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,title,category,description,status,created_at",
+        resourceValues,
+      );
     res.status(201).json({ resource: result.rows[0] });
   } catch (error) { next(error); }
 });
@@ -482,6 +515,30 @@ app.get("/api/resources/:id/file", requireAuth, async (req, res, next) => {
     const fileName = resource.file_name.replace(/[\r\n"\\]/g, "_");
     res.set({ "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="${fileName}"`, "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store" });
     res.send(resource.file_data);
+  } catch (error) { next(error); }
+});
+
+// Protect the actual HTML responses so course content cannot be viewed by
+// bypassing the client-side navigation or opening a lesson URL directly.
+app.use(async (req, res, next) => {
+  const pagePath = req.path.toLowerCase();
+  if (!protectedPages.has(pagePath)) return next();
+  res.set("Cache-Control", "private, no-store");
+  if (!req.session.userId) {
+    const nextPath = encodeURIComponent(`${req.path}${req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : ""}`);
+    return res.redirect(`/login.html?next=${nextPath}`);
+  }
+  try {
+    const result = await pool.query("SELECT role,status,email_verified_at FROM users WHERE id=$1", [req.session.userId]);
+    const user = result.rows[0];
+    if (!user || user.status !== "active") {
+      req.session.destroy(() => {});
+      res.clearCookie("cypher.sid", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/" });
+      return res.redirect("/login.html");
+    }
+    if (!user.email_verified_at) return res.redirect("/verify-email.html");
+    if (adminPages.has(pagePath) && user.role !== "admin") return res.status(403).send("Administrator access required.");
+    next();
   } catch (error) { next(error); }
 });
 

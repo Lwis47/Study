@@ -34,6 +34,15 @@ function setBusy(form, busy) {
   });
 }
 
+function loginDestination() {
+  const requested = new URLSearchParams(location.search).get("next");
+  if (!requested) return "/dashboard.html";
+  try {
+    const destination = new URL(requested, location.origin);
+    return destination.origin === location.origin ? `${destination.pathname}${destination.search}${destination.hash}` : "/dashboard.html";
+  } catch { return "/dashboard.html"; }
+}
+
 function setupBackgroundVideo() {
   const video = document.createElement("video");
   video.className = "site-background-video";
@@ -114,7 +123,7 @@ function setupAuthForms() {
     try {
       const result = await api("/api/auth/login", { method: "POST", body: { identity: data.get("login"), password: data.get("password") } });
       signedInUser = result.user;
-      location.href = "/dashboard.html";
+      location.href = loginDestination();
     } catch (error) {
       showFeedback(feedback, error.message, true);
       if (error.verificationRequired) feedback.innerHTML = `${escapeHtml(error.message)} <a href="/verify-email.html">Resend verification email</a>`;
@@ -257,6 +266,15 @@ function setupAdminPanel() {
 function setupResourceSubmission() {
   const form = document.querySelector("#resource-submission");
   if (!form) return;
+  const isAdmin = signedInUser?.role === "admin";
+  const heading = document.querySelector("[data-resource-heading]");
+  const guidance = document.querySelector("[data-resource-guidance]");
+  const submitLabel = document.querySelector("[data-resource-submit-label]");
+  if (isAdmin) {
+    if (heading) heading.textContent = "Upload learning material";
+    if (guidance) guidance.textContent = "Choose the learning path for this PDF. Administrator uploads are published immediately.";
+    if (submitLabel) submitLabel.textContent = "Upload and publish";
+  }
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const data = new FormData(form);
@@ -271,11 +289,13 @@ function setupResourceSubmission() {
     uploadData.set("file", file);
     setBusy(form, true);
     try {
-      await api("/api/resources", { method: "POST", body: uploadData });
+      const result = await api("/api/resources", { method: "POST", body: uploadData });
       form.reset();
       feedback.hidden = false;
       feedback.classList.remove("error-message");
-      feedback.querySelector("span").textContent = "Your resource is waiting for administrator review.";
+      feedback.querySelector("span").textContent = isAdmin
+        ? `Published “${result.resource.title}” to ${result.resource.category}.`
+        : "Your resource is waiting for administrator review.";
     } catch (error) { showFeedback(feedback, error.message, true); }
     finally { setBusy(form, false); }
   });

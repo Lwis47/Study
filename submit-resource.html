@@ -10,7 +10,7 @@
     <header class="site-header">
       <div class="nav-wrap">
         <a class="brand" href="dashboard.html">CYPHER-SCHOOL // LEARN</a>
-        <nav aria-label="Learner navigation">
+        <nav data-account-nav aria-label="Learner navigation">
           <a href="dashboard.html">Dashboard</a>
           <a href="courses.html">Courses</a>
           <a href="library.html">Library</a>
@@ -20,8 +20,8 @@
     <main class="form-page">
       <section class="form-container">
         <p class="eyebrow">Community contribution</p>
-        <h1>Submit a resource</h1>
-        <p>
+        <h1 data-resource-heading>Submit a resource</h1>
+        <p data-resource-guidance>
           Every submission is private until a Cypher-School administrator reviews and
           approves it. Only submit material you have permission to share.
         </p>
@@ -31,13 +31,16 @@
             placeholder="Give the material a clear title" required>
           <label for="resource-category">Learning category</label>
           <select id="resource-category" name="resource-category" required>
-            <option value="">Choose a category</option>
+          <option value="">Choose a learning path</option>
+          <option>Cybersecurity Basics</option>
             <option>Linux &amp; Networking</option>
-            <option>Python &amp; Programming</option>
-            <option>Web Development</option>
-            <option>Databases &amp; SQL</option>
-            <option>Cybersecurity</option>
-            <option>Operating Systems</option>
+          <option>Web Security</option>
+          <option>Python for Security</option>
+          <option>OSINT Fundamentals</option>
+          <option>Security Practice</option>
+          <option>Web Development</option>
+          <option>Databases &amp; SQL</option>
+          <option>Operating Systems</option>
           </select>
           <label for="resource-file">PDF document</label>
           <input id="resource-file" name="resource-file" type="file"
@@ -45,7 +48,7 @@
           <label for="resource-note">Short description</label>
           <input id="resource-note" name="resource-note" type="text"
             placeholder="What will learners gain from this resource?" required>
-          <button type="submit">Send for admin review</button>
+          <button type="submit" data-resource-submit-label>Send for admin review</button>
         </form>
         <div id="submission-message" class="notice form-message" role="status" hidden>
           <strong>SUBMITTED</strong>

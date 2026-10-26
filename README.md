@@ -22,7 +22,7 @@ The included `render.yaml` defines a free Node web service and a free PostgreSQL
 
 The Blueprint configures `NODE_ENV=production`, generates a strong `SESSION_SECRET`, obtains `DATABASE_URL` from the Render PostgreSQL database, and sets `DATABASE_SSL=false` for Render's private network connection. It also sets `SMTP_HOST=smtp-relay.brevo.com`, `SMTP_PORT=2525`, and `SMTP_SECURE=false` (STARTTLS is used by Nodemailer).
 
-Enter these three values in Render when prompted by the Blueprint:
+Enter these four values in Render when prompted by the Blueprint:
 
 | Variable | What to enter |
 | --- | --- |
@@ -48,11 +48,12 @@ The Blueprint binds the web service to `0.0.0.0` through `PORT`, uses `/api/heal
 
 - PostgreSQL accounts and resource records, with bcrypt password hashing.
 - Email verification before sign-in, resend verification, one-time 30-minute password reset links, and password change notices. Email tokens are stored as hashes and rate-limited.
+- Public learning-path listings with server-side sign-in protection on lesson pages, learner dashboards, and the resource library.
 - Server-side PostgreSQL sessions using HttpOnly, SameSite cookies.
 - Login/register throttling, same-origin mutation checks, input limits, Helmet headers, and admin authorization on the server.
-- Account profile, password, and deletion endpoints.
+- Account profile, password, and deletion endpoints. Member profile and password changes each have a separate 30-day limit; password recovery remains available.
 - Administrator user search, role/status changes, password reset email, export, and deletion. The server protects the last active administrator.
-- PDF resource submissions stored in PostgreSQL until an administrator approves or rejects them.
+- PDF uploads across all nine learning paths. Member submissions stay pending until admin review; admin uploads publish immediately. Files are stored in PostgreSQL.
 - `/api/health` readiness check.
 
 The free Render web tier sleeps when idle, so the first request after inactivity can take longer. The free PostgreSQL database expires after 30 days; migrate or upgrade it before then to retain accounts and learner progress.
