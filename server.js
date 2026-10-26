@@ -68,7 +68,10 @@ app.use(session({
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 240, standardHeaders: "draft-8", legacyHeaders: false });
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 12, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many attempts. Try again in a few minutes." } });
 const emailActionLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many email requests. Try again later." } });
-app.use("/api", apiLimiter);
+app.use("/api", (req, res, next) => {
+  res.set("Cache-Control", "private, no-store, max-age=0");
+  next();
+}, apiLimiter);
 
 function httpError(status, message) { const error = new Error(message); error.status = status; return error; }
 function text(value, max) { return typeof value === "string" ? value.trim().slice(0, max) : ""; }
@@ -587,9 +590,9 @@ app.use(async (req, res, next) => {
       `<meta name="twitter:description" content="${htmlAttribute(description)}">`,
       `<meta name="twitter:image" content="${htmlAttribute(previewImage)}">`,
     ].join("\n    ");
-    if (res.getHeader("Cache-Control") == null) {
-      res.set("Cache-Control", process.env.NODE_ENV === "production" ? "public, max-age=3600" : "no-cache");
-    }
+    // Pages contain account-aware navigation and must not be served from an
+    // old browser/proxy cache after a login or a new frontend deployment.
+    res.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
     res.type("html").send(html.replace(/<\/head>/i, `${socialMetadata}\n  </head>`));
   } catch (error) {
     if (error.code === "ENOENT") return next();
@@ -602,7 +605,7 @@ app.use((req, res, next) => {
   if (/\/(?:server\.js|db\.js|mailer\.js|package(?:-lock)?\.json|render\.yaml|\.env.*|scripts\/.*|node_modules\/.*|README.*|\.git.*)$/i.test(req.path)) return res.sendStatus(404);
   next();
 });
-app.use(express.static(__dirname, { dotfiles: "deny", index: "index.html", maxAge: process.env.NODE_ENV === "production" ? "1h" : 0 }));
+app.use(express.static(__dirname, { dotfiles: "deny", index: "index.html", maxAge: 0 }));
 app.use((req, res, next) => {
   if (req.path.toLowerCase().startsWith("/api/")) return next();
   res.status(404).sendFile(path.join(__dirname, "error.html"));
