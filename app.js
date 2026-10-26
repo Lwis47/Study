@@ -35,6 +35,7 @@ function setBusy(form, busy) {
 }
 
 function loginDestination() {
+  if (signedInUser?.role === "admin") return "/admin.html";
   const requested = new URLSearchParams(location.search).get("next");
   if (!requested) return "/dashboard.html";
   try {
@@ -82,9 +83,12 @@ function setupMobileNavigation() {
 function renderNavigation() {
   const nav = document.querySelector("nav[data-account-nav]");
   if (!nav) return;
+  if (signedInUser?.role === "admin") {
+    nav.innerHTML = '<a href="admin.html">Control panel</a><a href="admin-review.html">Review materials</a><a href="submit-resource.html">Upload materials</a>';
+  }
   nav.querySelectorAll("[data-auth-link]").forEach((link) => link.remove());
   const links = signedInUser
-    ? `<a data-auth-link href="account.html">${escapeHtml(signedInUser.username)} · Account</a>${signedInUser.role === "admin" ? '<a data-auth-link href="admin.html">Admin panel</a>' : ""}<button data-auth-link class="link-button" type="button" data-logout>Log out</button>`
+    ? `<a data-auth-link href="account.html">${escapeHtml(signedInUser.username)} · Account</a><button data-auth-link class="link-button" type="button" data-logout>Log out</button>`
     : '<a data-auth-link href="login.html">Log in</a><a data-auth-link href="signup.html">Sign up</a>';
   nav.insertAdjacentHTML("beforeend", links);
   nav.querySelector("[data-logout]")?.addEventListener("click", async () => {
@@ -322,9 +326,38 @@ function setupPublishedResources() {
   const root = document.querySelector("[data-library-resources]");
   if (!root) return;
   if (!signedInUser) { root.innerHTML = '<p>Log in to view approved community resources.</p>'; return; }
-  api("/api/resources").then(({ resources }) => {
-    root.innerHTML = resources.length ? `<div class="section-heading"><p class="eyebrow">Community library</p><h2>Approved learner resources</h2></div><div class="resource-grid">${resources.map((item) => `<article class="resource-card"><span class="tag">${escapeHtml(item.category)}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.description)}</p><a class="button" href="/api/resources/${item.id}/file" target="_blank" rel="noopener">Read PDF</a></article>`).join("")}</div>` : '<div class="upload-note"><strong>Community resources</strong><p>Approved learner submissions will appear here.</p></div>';
+  const category = new URLSearchParams(location.search).get("path");
+  const url = category ? `/api/resources?category=${encodeURIComponent(category)}` : "/api/resources";
+  api(url).then(({ resources }) => {
+    root.innerHTML = resources.length ? `<div class="resource-grid">${resources.map((item) => `<article class="resource-card"><span class="tag">${escapeHtml(item.category)}</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.description)}</p><a class="button" href="/api/resources/${item.id}/file" target="_blank" rel="noopener">Read PDF</a></article>`).join("")}</div>` : '<div class="upload-note"><strong>No materials published yet</strong><p>Approved learning materials for this path will appear here.</p></div>';
   }).catch((error) => { root.textContent = error.message; });
+}
+
+function setupLearningPath() {
+  const root = document.querySelector("[data-learning-path]");
+  if (!root) return;
+  const paths = {
+    "Cybersecurity Basics": ["PATH 01", "Cybersecurity basics", "Learn ethics, online safety, core concepts, and common threats."],
+    "Linux & Networking": ["PATH 02", "Linux & networking", "Build the command-line and network knowledge every analyst needs."],
+    "Web Security": ["PATH 03", "Web security", "Understand web applications, secure design, and safe testing."],
+    "Python for Security": ["PATH 04", "Python for security", "Use Python to automate everyday defensive security tasks."],
+    "OSINT Fundamentals": ["PATH 05", "OSINT fundamentals", "Practice ethical research, source validation, and digital privacy."],
+    "Security Practice": ["PATH 06", "Security practice", "Learn to work responsibly in legal labs and capture-the-flag tasks."],
+    "Web Development": ["PATH 07", "Web development", "Understand HTML, CSS, JavaScript, and the structure of web apps."],
+    "Databases & SQL": ["PATH 08", "Databases & SQL", "Learn how data is stored, queried, and secured in modern systems."],
+    "Operating Systems": ["PATH 09", "Operating systems", "Explore processes, memory, files, and the foundations of computing."],
+  };
+  const key = new URLSearchParams(location.search).get("path");
+  const path = paths[key];
+  if (!path) { location.replace("/courses.html"); return; }
+  document.title = `${path[1]} | Cypher-School`;
+  root.querySelector("[data-path-number]").textContent = path[0];
+  root.querySelector("[data-path-title]").textContent = path[1];
+  root.querySelector("[data-path-description]").textContent = path[2];
+  if (key === "Linux & Networking") {
+    const lessons = root.querySelector("[data-linux-lessons]");
+    lessons.hidden = false;
+  }
 }
 
 function setupCourseFilter() {
@@ -442,6 +475,7 @@ async function initialize() {
   setupResourceSubmission();
   setupResourceReview();
   setupPublishedResources();
+  setupLearningPath();
   setupCourseFilter();
   setupProgress();
   setupQuiz();

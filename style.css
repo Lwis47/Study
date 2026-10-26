@@ -446,17 +446,10 @@ hr { margin: 28px 0; border: 0; border-top: 1px solid var(--border); }
 .form-container > p { margin-top: 10px; }
 form { margin-top: 26px; }
 
-body.auth-page {
-  background-color: #07111f;
-  background-position: center;
-  background-size: cover;
-  background-attachment: fixed;
-}
-body.login-page { background-image: url("/login%20form%20image.jpg"); }
-body.registration-page { background-image: url("/registration%20form%20image.jpg"); }
-body.auth-page::before { background: linear-gradient(135deg, rgba(3, 8, 17, .76), rgba(4, 13, 25, .57)); }
-body.auth-page .site-background-video { display: none; }
-body.auth-page .form-container { background: rgba(7, 17, 31, .83); border: 1px solid rgba(130, 190, 220, .28); box-shadow: 0 24px 70px rgba(0, 0, 0, .42); backdrop-filter: blur(10px); }
+body.auth-page .form-container { position: relative; isolation: isolate; overflow: hidden; background: rgba(7, 17, 31, .88); border: 1px solid rgba(130, 190, 220, .38); box-shadow: 0 24px 70px rgba(0, 0, 0, .42); }
+body.auth-page .form-container::before { content: ""; position: absolute; z-index: -1; inset: 0; border-radius: inherit; background-position: center; background-size: cover; opacity: .47; }
+body.login-page .form-container::before { background-image: linear-gradient(rgba(4, 12, 23, .68), rgba(4, 12, 23, .78)), url("/login%20form%20image.jpg"); }
+body.registration-page .form-container::before { background-image: linear-gradient(rgba(4, 12, 23, .68), rgba(4, 12, 23, .78)), url("/registration%20form%20image.jpg"); }
 
 .dashboard-welcome, .admin-page-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 320px); align-items: center; gap: 34px; }
 .dashboard-welcome img, .admin-page-hero img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 18px 44px rgba(0, 0, 0, .36); }

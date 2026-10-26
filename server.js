@@ -24,6 +24,7 @@ const allowedCategories = new Set([
 const protectedPages = new Set([
   "/dashboard.html", "/linux.html", "/linux-networking.html",
   "/linux-introduction.html", "/quiz-linux.html", "/library.html",
+  "/learning-path.html",
   "/submit-resource.html", "/account.html", "/admin.html", "/admin-review.html",
 ]);
 const adminPages = new Set(["/admin.html", "/admin-review.html"]);
@@ -490,7 +491,14 @@ app.post("/api/resources", sameOrigin, requireAuth, upload.single("file"), async
 
 app.get("/api/resources", requireAuth, async (req, res, next) => {
   try {
-    const result = await pool.query("SELECT id,title,category,description,status,created_at FROM resources WHERE status='approved' ORDER BY created_at DESC LIMIT 200");
+    const category = text(req.query.category, 80);
+    if (category && !allowedCategories.has(category)) throw httpError(400, "Choose a valid learning path.");
+    const categories = category === "Cybersecurity Basics" ? [category, "Cybersecurity"]
+      : category === "Python for Security" ? [category, "Python & Programming"]
+      : category ? [category] : [];
+    const result = categories.length
+      ? await pool.query("SELECT id,title,category,description,status,created_at FROM resources WHERE status='approved' AND category=ANY($1::text[]) ORDER BY created_at DESC LIMIT 200", [categories])
+      : await pool.query("SELECT id,title,category,description,status,created_at FROM resources WHERE status='approved' ORDER BY created_at DESC LIMIT 200");
     res.json({ resources: result.rows });
   } catch (error) { next(error); }
 });
@@ -547,6 +555,7 @@ app.use(async (req, res, next) => {
     }
     if (!user.email_verified_at) return res.redirect("/verify-email.html");
     if (adminPages.has(pagePath) && user.role !== "admin") return res.status(403).sendFile(path.join(__dirname, "error.html"));
+    if (user.role === "admin" && ["/dashboard.html", "/linux.html", "/linux-networking.html", "/linux-introduction.html", "/quiz-linux.html", "/library.html", "/learning-path.html"].includes(pagePath)) return res.redirect("/admin.html");
     next();
   } catch (error) { next(error); }
 });
