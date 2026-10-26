@@ -446,6 +446,33 @@ hr { margin: 28px 0; border: 0; border-top: 1px solid var(--border); }
 .form-container > p { margin-top: 10px; }
 form { margin-top: 26px; }
 
+body.auth-page {
+  background-color: #07111f;
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
+}
+body.login-page { background-image: url("/login%20form%20image.jpg"); }
+body.registration-page { background-image: url("/registration%20form%20image.jpg"); }
+body.auth-page::before { background: linear-gradient(135deg, rgba(3, 8, 17, .76), rgba(4, 13, 25, .57)); }
+body.auth-page .site-background-video { display: none; }
+body.auth-page .form-container { background: rgba(7, 17, 31, .83); border: 1px solid rgba(130, 190, 220, .28); box-shadow: 0 24px 70px rgba(0, 0, 0, .42); backdrop-filter: blur(10px); }
+
+.dashboard-welcome, .admin-page-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 320px); align-items: center; gap: 34px; }
+.dashboard-welcome img, .admin-page-hero img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 18px 44px rgba(0, 0, 0, .36); }
+.dashboard-welcome img { object-position: center; }
+.admin-page-hero { padding-top: 48px; }
+.admin-page-hero > div > p:not(.eyebrow) { margin-top: 18px; }
+.admin-page-hero .actions { margin-top: 24px; }
+
+.error-page { min-height: 100vh; background: #07111f; }
+.error-page::before { background: linear-gradient(145deg, rgba(3, 10, 20, .78), rgba(4, 16, 29, .9)); }
+.error-content { display: grid; justify-items: center; width: min(760px, 100% - 40px); margin: 0 auto; padding: 56px 0 80px; text-align: center; }
+.error-content img { display: block; width: min(100%, 420px); aspect-ratio: 1; margin-bottom: 28px; object-fit: cover; border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 20px 55px rgba(0, 0, 0, .4); }
+.error-content h1 span { color: var(--cyan); }
+.error-content > p:not(.eyebrow) { max-width: 550px; margin-top: 12px; }
+.error-content .actions { justify-content: center; margin-top: 24px; }
+
 label { display: block; margin: 16px 0 6px; color: #dbe8f2; font-size: 0.9rem; }
 input, select {
   width: 100%;
@@ -497,6 +524,8 @@ footer {
   nav.is-open { display: flex; flex-wrap: wrap; justify-content: flex-end; }
   nav a { padding: 7px 6px; font-size: 0.83rem; }
   .hero { grid-template-columns: 1fr; gap: 40px; min-height: auto; padding: 66px 0; }
+  .dashboard-welcome, .admin-page-hero { grid-template-columns: 1fr; gap: 22px; }
+  .dashboard-welcome img, .admin-page-hero img { width: min(100%, 320px); }
   .grid { grid-template-columns: 1fr; }
   .dashboard-grid, .distribution-list { grid-template-columns: 1fr; }
   .course-layout { grid-template-columns: 1fr; }

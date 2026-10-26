@@ -1,4 +1,5 @@
 const path = require("node:path");
+const fs = require("node:fs/promises");
 const crypto = require("node:crypto");
 const express = require("express");
 const helmet = require("helmet");
@@ -71,6 +72,14 @@ app.use("/api", apiLimiter);
 function httpError(status, message) { const error = new Error(message); error.status = status; return error; }
 function text(value, max) { return typeof value === "string" ? value.trim().slice(0, max) : ""; }
 function email(value) { return text(value, 254).toLowerCase(); }
+function htmlAttribute(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+}
+function publicBaseUrl(req) {
+  const configured = process.env.APP_BASE_URL || process.env.RENDER_EXTERNAL_URL;
+  try { return new URL(configured || `${req.protocol}://${req.get("host")}`).origin; }
+  catch { return ""; }
+}
 function newToken() { const raw = crypto.randomBytes(32).toString("hex"); return { raw, hash: crypto.createHash("sha256").update(raw).digest("hex") }; }
 async function revokeSessions(userId, exceptSessionId) {
   if (exceptSessionId) {
@@ -537,9 +546,46 @@ app.use(async (req, res, next) => {
       return res.redirect("/login.html");
     }
     if (!user.email_verified_at) return res.redirect("/verify-email.html");
-    if (adminPages.has(pagePath) && user.role !== "admin") return res.status(403).send("Administrator access required.");
+    if (adminPages.has(pagePath) && user.role !== "admin") return res.status(403).sendFile(path.join(__dirname, "error.html"));
     next();
   } catch (error) { next(error); }
+});
+
+// Add absolute Open Graph and Twitter image URLs to every HTML page. Social
+// crawlers can then show the named website image without running JavaScript.
+app.use(async (req, res, next) => {
+  if (req.method !== "GET") return next();
+  const pagePath = req.path.toLowerCase();
+  if (pagePath !== "/" && !pagePath.endsWith(".html")) return next();
+  const fileName = pagePath === "/" ? "index.html" : path.basename(req.path);
+  try {
+    const html = await fs.readFile(path.join(__dirname, fileName), "utf8");
+    const title = html.match(/<title>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ").trim() || "Cypher-School";
+    const description = html.match(/<meta\s+name=["']description["']\s+content=["']([^"']*)["']/i)?.[1]
+      || "Practical, responsible cybersecurity learning at Cypher-School.";
+    const baseUrl = publicBaseUrl(req);
+    const pageUrl = `${baseUrl}${req.path === "/" ? "/" : req.path}`;
+    const previewImage = `${baseUrl}/website%20image.jpg`;
+    const socialMetadata = [
+      `<meta property="og:type" content="website">`,
+      `<meta property="og:title" content="${htmlAttribute(title)}">`,
+      `<meta property="og:description" content="${htmlAttribute(description)}">`,
+      `<meta property="og:url" content="${htmlAttribute(pageUrl)}">`,
+      `<meta property="og:image" content="${htmlAttribute(previewImage)}">`,
+      `<meta property="og:image:alt" content="Cypher-School cybersecurity learning paths">`,
+      `<meta name="twitter:card" content="summary_large_image">`,
+      `<meta name="twitter:title" content="${htmlAttribute(title)}">`,
+      `<meta name="twitter:description" content="${htmlAttribute(description)}">`,
+      `<meta name="twitter:image" content="${htmlAttribute(previewImage)}">`,
+    ].join("\n    ");
+    if (res.getHeader("Cache-Control") == null) {
+      res.set("Cache-Control", process.env.NODE_ENV === "production" ? "public, max-age=3600" : "no-cache");
+    }
+    res.type("html").send(html.replace(/<\/head>/i, `${socialMetadata}\n  </head>`));
+  } catch (error) {
+    if (error.code === "ENOENT") return next();
+    next(error);
+  }
 });
 
 // Never expose server configuration, database files, package manifests, or the admin bootstrap script.
@@ -548,12 +594,16 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.static(__dirname, { dotfiles: "deny", index: "index.html", maxAge: process.env.NODE_ENV === "production" ? "1h" : 0 }));
-app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
+app.use((req, res, next) => {
+  if (req.path.toLowerCase().startsWith("/api/")) return next();
+  res.status(404).sendFile(path.join(__dirname, "error.html"));
+});
 app.use("/api", (req, res) => res.status(404).json({ error: "API endpoint not found." }));
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
   const status = Number(error.status) || (error instanceof multer.MulterError ? 400 : 500);
   if (status >= 500) console.error(error);
+  if (!req.path.toLowerCase().startsWith("/api") && req.method === "GET") return res.status(status).sendFile(path.join(__dirname, "error.html"));
   res.status(status).json({ error: status >= 500 ? "The server could not complete that request." : error.message });
 });
 
