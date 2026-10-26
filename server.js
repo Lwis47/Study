@@ -508,7 +508,12 @@ app.get("/api/resources", requireAuth, async (req, res, next) => {
 
 app.get("/api/admin/resources", ...requireActiveAdmin, async (req, res, next) => {
   try {
-    const result = await pool.query("SELECT r.id,r.title,r.category,r.description,r.file_name,r.status,r.review_note,r.created_at,u.username AS uploader FROM resources r LEFT JOIN users u ON u.id=r.uploader_id ORDER BY CASE r.status WHEN 'pending' THEN 0 ELSE 1 END, r.created_at DESC LIMIT 500");
+    const status = text(req.query.status, 12);
+    if (status && !["pending", "approved", "rejected"].includes(status)) throw httpError(400, "Choose a valid resource status.");
+    const result = await pool.query(
+      "SELECT r.id,r.title,r.category,r.description,r.file_name,r.status,r.review_note,r.created_at,u.username AS uploader FROM resources r LEFT JOIN users u ON u.id=r.uploader_id WHERE ($1='' OR r.status=$1) ORDER BY CASE r.status WHEN 'pending' THEN 0 ELSE 1 END, r.created_at DESC LIMIT 500",
+      [status],
+    );
     res.json({ resources: result.rows });
   } catch (error) { next(error); }
 });
